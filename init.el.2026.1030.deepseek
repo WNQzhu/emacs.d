@@ -1,0 +1,174 @@
+;;; init.el --- Emacs 31.1 on Windows 11 -*- lexical-binding: t; -*-
+
+;;; 1. 包管理：中科大镜像
+(require 'package)
+(setq package-archives
+      '(("gnu"    . "https://mirrors.ustc.edu.cn/elpa/gnu/")
+        ("nongnu" . "https://mirrors.ustc.edu.cn/elpa/nongnu/")
+        ("melpa"  . "https://mirrors.ustc.edu.cn/elpa/melpa/")))
+(setq package-native-compile t)
+(package-initialize)
+
+;; 2. 刷新索引（失败不中断）
+(unless package-archive-contents
+  (condition-case err
+      (package-refresh-contents)
+    (error (message "刷新包索引失败: %s" err))))
+
+;; 3. 安装缺失的包（失败不中断）
+(dolist (pkg '(dash ivy counsel swiper winum))
+  (unless (package-installed-p pkg)
+    (condition-case err
+        (package-install pkg)
+      (error (message "安装 %s 失败: %s" pkg err)))))
+
+;; 4. ivy
+(condition-case err
+    (progn
+      (require 'ivy)
+      (ivy-mode 1)
+      (setq ivy-use-virtual-buffers t)
+      (setq enable-recursive-minibuffers t)
+      (setq ivy-count-format "(%d/%d) ")
+      (global-set-key (kbd "C-x b") 'ivy-switch-buffer)
+      (with-eval-after-load 'ivy
+        (define-key ivy-minibuffer-map (kbd "C-j") 'ivy-immediate-done)
+        (define-key ivy-minibuffer-map (kbd "RET") 'ivy-alt-done)))
+  (error (message "ivy 加载失败: %s" err)))
+
+;; 5. swiper
+(condition-case err
+    (progn
+      (require 'swiper)
+      (global-set-key (kbd "C-s") 'swiper-isearch)
+      (global-set-key (kbd "C-r") 'swiper-isearch-backward))
+  (error (message "swiper 加载失败: %s" err)))
+
+;; 6. counsel（M-x 的 ivy 补全靠它）
+(condition-case err
+    (progn
+      (require 'counsel)
+      (counsel-mode 1)
+      (global-set-key (kbd "M-x") 'counsel-M-x)
+      (global-set-key (kbd "C-x C-f") 'counsel-find-file)
+      (global-set-key (kbd "C-c g") 'counsel-git)
+      (global-set-key (kbd "C-c j") 'counsel-git-grep)
+      (global-set-key (kbd "C-c r") 'counsel-rg)
+      (global-set-key (kbd "C-c f") 'counsel-recentf))
+  (error (message "counsel 加载失败: %s" err)))
+
+;; 7. winum：确保依赖、keymap、模式和兜底键位
+(condition-case err
+    (progn
+      (require 'dash nil t)
+      (unless (featurep 'dash)
+        (package-install 'dash)
+        (require 'dash))
+
+      (setq winum-keymap
+            (let ((map (make-sparse-keymap)))
+              (dolist (i (number-sequence 1 9))
+                (define-key map (kbd (format "M-%d" i))
+                  (intern (format "winum-select-window-%d" i))))
+              map))
+
+      (require 'winum)
+      (winum-mode 1)
+
+      (dolist (i (number-sequence 1 9))
+        (global-set-key (kbd (format "M-%d" i))
+                        (intern (format "winum-select-window-%d" i))))
+
+      (message "winum 就绪，winum-mode=%S" (bound-and-true-p winum-mode)))
+  (error (message "winum 配置失败: %s" err)))
+
+;; 7.5 备选：Shift+方向键切窗口
+(windmove-default-keybindings 'shift)
+
+;; ============================================================
+;;; 8. 新增：文件打开时默认只读
+;; ============================================================
+(defun my/find-file-read-only ()
+  "打开文件后默认进入只读模式。需要编辑时按 C-x C-q 切换。"
+  (read-only-mode 1))
+
+(add-hook 'find-file-hook #'my/find-file-read-only)
+
+;; ============================================================
+;;; 9. 新增：字体调大
+;; ============================================================
+;; Consolas height 150 约等于 15pt，比之前的 120 明显更大。
+;; 如果还想更大，把 150 改成 160 / 170 / 180 即可。
+(set-face-attribute 'default nil :font "Consolas" :height 150)
+
+;; 中文使用 Microsoft YaHei（微软雅黑），高度与英文字体保持一致
+(when (member "Microsoft YaHei" (font-family-list))
+  (set-fontset-font t 'han (font-spec :family "Microsoft YaHei" :size 16)))
+
+;; ============================================================
+;;; 10. 新增：右侧 Alt / Ctrl 与左侧一致
+;; ============================================================
+;; 10.1 让右侧 Alt 也作为 Meta 键（核心）
+;;      w32-alt-is-meta 确保 Alt 是 Meta，
+;;      w32-recognize-altgr 设为 nil 则不再把右 Alt 当 AltGr 特殊字符键。
+(when (eq system-type 'windows-nt)
+  (setq w32-alt-is-meta t)
+  (setq w32-recognize-altgr nil))
+
+;; 10.2 右侧 Ctrl：Emacs 内部没有直接开关，
+;;      右 Ctrl 通常被 Windows 视为 AltGr 的一部分（右 Alt + 左 Ctrl）。
+;;      由于上面已关闭 w32-recognize-altgr，右 Ctrl 的行为会更接近普通 Ctrl。
+;;      如果你需要右 Ctrl 在所有应用里都等价于左 Ctrl，
+;;      最可靠的方式是用 AutoHotkey 或 SharpKeys 在系统层映射。
+
+;; ============================================================
+;;; 11. Windows 基础设置
+;; ============================================================
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+(prefer-coding-system 'utf-8)
+(set-language-environment "UTF-8")
+(global-display-line-numbers-mode 1)
+
+
+(add-to-list 'custom-theme-load-path (expand-file-name "themes" user-emacs-directory))
+(load-theme 'tango-dark t)
+
+(defun my/toggle-dark-light-theme ()
+  "在 tango-dark（灰黑底）与 modus-operandi（浅色）之间切换。"
+  (interactive)
+  (if (custom-theme-enabled-p 'tango-dark)
+      (progn (disable-theme 'tango-dark)
+             (load-theme 'modus-operandi t))
+    (disable-theme 'modus-operandi)
+    (load-theme 'tango-dark t)))
+(global-set-key (kbd "C-c t") 'my/toggle-dark-light-theme)
+
+;; 13. native-comp 保守调优
+(when (eq system-type 'windows-nt)
+  (setq native-comp-async-jobs-number 4)
+  (setq native-comp-async-report-warnings-errors 'silent))
+
+;; 14. 启动 GC 优化
+(setq gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 0.6)
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (setq gc-cons-threshold (* 64 1024 1024)
+                  gc-cons-percentage 0.1)))
+
+;; 15. custom-file 隔离
+(setq custom-file (expand-file-name "custom.el" user-emacs-directory))
+(when (file-exists-p custom-file)
+  (load custom-file))
+
+
+(add-to-list 'custom-theme-load-path "~/.emacs.d/themes")
+(load-theme 'tango-dark t)
+
+
+(provide 'init)
+;;; init.el ends here
+
+
+
